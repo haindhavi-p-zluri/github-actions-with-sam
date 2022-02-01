@@ -48,4 +48,40 @@ jobs:
           aws-region            : ${{ env.AWS_REGION_NAME }}
 
       - name: Copy our DE Deployment package to S3 bucket
-        run: aws s3 cp ${{ env.DEPLOY_PACKAGE_NAME }} s3://${{ env.S3_BUCKET_NAME}}/ 
+        run: aws s3 cp ${{ env.DEPLOY_PACKAGE_NAME }} s3://${{ env.S3_BUCKET_NAME}}/
+  deploy-de-lambda:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        functions: [
+          hello_world_lambda,
+          
+        ]
+    steps:
+
+      - name: install aws cli
+        run: |
+          pip3 install awscli
+
+
+      - name: Configure AWS Credentils
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id     : ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key : ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region            : ${{ env.AWS_REGION_NAME }}
+          
+      - name: deploy  DE lambda
+        run: |
+          aws lambda update-function-code \
+          --function-name ${{ matrix.functions }} \
+          --s3-bucket ${{ env.S3_BUCKET_NAME }} \
+          --s3-key ${{ env.DE_DEPLOY_PACKAGE_NAME}}
+
+      - name: Runner clean workspace path
+        run: |
+          echo "Cleaning up previous run"
+          rm -rf "${{ github.workspace }}/*"
+  
+  
+  
