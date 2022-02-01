@@ -1,24 +1,51 @@
+name: deploy-lambda
+env:
+  S3_BUCKET_NAME                      : "github-actions-lambda"
+  DEPLOY_PACKAGE_NAME                 : "github-actions-lambda_$(date +%Y%m%d).zip"
+  AWS_REGION_NAME                     : "ap-south-1"
+  RUNNER_PYTHON_VERSION               : "3.8"
+  PYTHON_ENV                          : "python3.8"
 on:
   push:
     branches:
-      - main
+      - develop
+
 jobs:
-  build-deploy:
+  integrate-to-de-s3:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-      - uses: aws-actions/setup-sam@v1
-      - uses: aws-actions/configure-aws-credentials@v1
+      - name: Set up Python
+        uses: actions/setup-python@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          python-version: ${{ env.RUNNER_PYTHON_VERSION }}
 
-      # sam build 
-      - run: sam build --use-container
+      - name: install aws cli
+        run: |
+          pip3 install awscli
 
-# Run Unit tests- Specify unit tests here 
+      - name: Create env file
+        run: |
+          echo "AWS_ACCESS_KEY = ${{ secrets.AWS_ACCESS_KEY_ID}}" >> .env
+          echo "AWS_SECRET_KEY = ${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+          echo "DEPLOY_PACKAGE_NAME=${{ env.DEPLOY_PACKAGE_NAME }}" >> $GITHUB_ENV 
 
-# sam deploy
-      - run: sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name sam-hello-world --s3-bucket github-actions-lambda --capabilities CAPABILITY_IAM --region ap-south-1 
+      - name: Install  DE dependencies and create DE deployment package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r de_requirements.txt -t .
+
+      - name: create DE deployment package
+        uses: montudor/action-zip@v1
+        with: 
+          args: zip -r ${{ env.DEPLOY_PACKAGE_NAME }} ./  -x  *.git*
+
+      - name: Configure AWS Credentils
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id     : ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key : ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region            : ${{ env.AWS_REGION_NAME }}
+
+      - name: Copy our DE Deployment package to S3 bucket
+        run: aws s3 cp ${{ env.DEPLOY_PACKAGE_NAME }} s3://${{ env.S3_BUCKET_NAME}}/ 
